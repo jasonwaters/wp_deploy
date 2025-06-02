@@ -1,0 +1,5 @@
+deploy_config.sh
+backups/
+*.sql
+*.zip
+sites/

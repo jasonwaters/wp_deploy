@@ -1,0 +1,38 @@
+# WordPress Deployment Configuration
+# Copy this file to deploy_config.sh and modify the values for your setup
+
+# =============================================================================
+# SITE PATHS
+# =============================================================================
+# Absolute paths to your WordPress installations
+STAGE_PATH="/srv/www/stage.mywebsite.com/public_html"
+PROD_PATH="/srv/www/mywebsite.com/public_html"
+
+# =============================================================================
+# URL CONFIGURATION
+# =============================================================================
+# URLs for search and replace
+STAGE_URL="stage.mywebsite.com"
+PROD_URL="mywebsite.com"
+
+# =============================================================================
+# BACKUP SETTINGS
+# =============================================================================
+# Directory to store backups (will be created if it doesn't exist)
+BACKUP_DIR="/var/backups/wordpress"
+
+# Number of backup archives to keep (older ones will be deleted)
+MAX_BACKUPS=5
+
+# =============================================================================
+# SPECIAL TABLES
+# =============================================================================
+# Table to preserve during database migration (e.g., form submissions)
+PRESERVE_TABLE="wp_bricks_form_submissions"
+
+# =============================================================================
+# NOTES
+# =============================================================================
+# Database credentials are read automatically from each site's wp-config.php file
+# Make sure both WordPress installations have properly configured wp-config.php files
+# with correct database connection settings
