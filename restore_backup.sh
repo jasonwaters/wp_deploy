@@ -74,6 +74,75 @@ list_backups() {
     echo ""
 }
 
+clear_production_cache() {
+    log "Clearing all production cache files and directories..."
+
+    cd "$PROD_PATH"
+
+    # 1. Clear common cache directories
+    local cache_dirs=(
+        "wp-content/cache"
+        "wp-content/uploads/cache"
+        "wp-content/w3tc-config"
+        "wp-content/wp-rocket-config"
+        "wp-content/litespeed"
+        "wp-content/et-cache"
+        "wp-content/autoptimize"
+        "wp-content/wp-fastest-cache"
+        "wp-content/wp-super-cache"
+        "wp-content/breeze"
+        "wp-content/swift-performance"
+        "wp-content/hummingbird-assets"
+        "wp-content/sg-cachepress"
+        "wp-content/endurance-page-cache"
+        "wp-content/object-cache"
+        "wp-content/db-cache"
+        "wp-content/advanced-cache"
+    )
+
+    local dirs_removed=0
+    for cache_dir in "${cache_dirs[@]}"; do
+        if [[ -d "$cache_dir" ]]; then
+            rm -rf "$cache_dir" 2>/dev/null && dirs_removed=$((dirs_removed + 1))
+        fi
+    done
+
+    # 2. Clear common cache files
+    local cache_files=(
+        "wp-content/advanced-cache.php"
+        "wp-content/object-cache.php"
+        "wp-content/db-cache.php"
+        "wp-content/wp-cache-config.php"
+        ".htaccess.bak"
+        "wp-content/.htaccess.bak"
+    )
+
+    local files_removed=0
+    for cache_file in "${cache_files[@]}"; do
+        if [[ -f "$cache_file" ]]; then
+            rm -f "$cache_file" 2>/dev/null && files_removed=$((files_removed + 1))
+        fi
+    done
+
+    # 3. Clear any .cache files and directories recursively
+    find . -name "*.cache" -type f -delete 2>/dev/null || true
+    find . -name ".cache" -type d -exec rm -rf {} + 2>/dev/null || true
+
+    # 4. Clear temporary files that might be cache-related
+    find wp-content -name "*.tmp" -type f -delete 2>/dev/null || true
+    find wp-content -name "*.temp" -type f -delete 2>/dev/null || true
+
+    # 5. Clear any minified/optimized files that might be stale
+    find wp-content -name "*.min.css.gz" -type f -delete 2>/dev/null || true
+    find wp-content -name "*.min.js.gz" -type f -delete 2>/dev/null || true
+
+    if [[ $dirs_removed -gt 0 || $files_removed -gt 0 ]]; then
+        log "✓ Cache cleanup completed ($dirs_removed directories, $files_removed files removed)"
+    else
+        log "✓ Cache cleanup completed (no cache files found)"
+    fi
+}
+
 restore_backup() {
     local backup_file="$1"
     local backup_path="${BACKUP_DIR}/${backup_file}"
@@ -117,18 +186,34 @@ restore_backup() {
     # Backup current wp-config.php
     if [[ -f "$PROD_PATH/wp-config.php" ]]; then
         cp "$PROD_PATH/wp-config.php" "${BACKUP_DIR}/wp-config.php.pre-restore"
-        log "Current wp-config.php backed up"
+        log "✓ Current wp-config.php backed up"
     fi
 
     # Restore files
     if [[ -d "$temp_dir/files" ]]; then
         log "Restoring files..."
-        rsync -av --delete "$temp_dir/files/" "$PROD_PATH/"
+
+        # Optimized rsync command for restore operations
+        if rsync \
+            --archive \
+            --compress \
+            --progress \
+            --human-readable \
+            --checksum \
+            --delete \
+            --delete-excluded \
+            --exclude='wp-config.php' \
+            "$temp_dir/files/" "$PROD_PATH/"; then
+
+            log "✓ File restore completed successfully"
+        else
+            error_exit "File restore failed"
+        fi
 
         # Restore the current wp-config.php
         if [[ -f "${BACKUP_DIR}/wp-config.php.pre-restore" ]]; then
             cp "${BACKUP_DIR}/wp-config.php.pre-restore" "$PROD_PATH/wp-config.php"
-            log "wp-config.php restored to current version"
+            log "✓ wp-config.php restored to current version"
         fi
     fi
 
@@ -142,14 +227,44 @@ restore_backup() {
 
         log "Importing backup data..."
         wp db import "$temp_dir/database.sql" --allow-root
-        log "Database restored successfully"
+        log "✓ Database restored successfully"
     fi
 
-    # Set proper permissions
+    # Set proper permissions (optimized for speed)
     log "Setting file permissions..."
-    find "$PROD_PATH" -type f -exec chmod 644 {} \;
-    find "$PROD_PATH" -type d -exec chmod 755 {} \;
-    chmod 600 "$PROD_PATH/wp-config.php"
+
+    # Method 1: Use find with + operator (much faster than -exec {} \;)
+    # This batches multiple files into single chmod commands
+    if command -v xargs &> /dev/null; then
+        # Use xargs for maximum efficiency (processes files in batches)
+        find "$PROD_PATH" -type d -print0 | xargs -0 -P 4 chmod 755 2>/dev/null || {
+            find "$PROD_PATH" -type d -exec chmod 755 {} + 2>/dev/null
+        }
+
+        find "$PROD_PATH" -type f -print0 | xargs -0 -P 4 chmod 644 2>/dev/null || {
+            find "$PROD_PATH" -type f -exec chmod 644 {} + 2>/dev/null
+        }
+    else
+        # Fallback: Use find with + operator (still much faster than {} \;)
+        find "$PROD_PATH" -type d -exec chmod 755 {} +
+        find "$PROD_PATH" -type f -exec chmod 644 {} +
+    fi
+
+    # Set specific permissions for sensitive files
+    chmod 600 "$PROD_PATH/wp-config.php" 2>/dev/null || log "WARNING: Could not set wp-config.php permissions"
+
+    # Set permissions for .htaccess if it exists (Apache only)
+    if [[ -f "$PROD_PATH/.htaccess" ]]; then
+        chmod 644 "$PROD_PATH/.htaccess" 2>/dev/null || log "WARNING: Could not set .htaccess permissions"
+        log "INFO: Found .htaccess file (Apache configuration)"
+    else
+        log "INFO: No .htaccess file found (likely using Nginx)"
+    fi
+
+    log "✓ File permissions set"
+
+    # Clear production cache (before WordPress cache flush)
+    clear_production_cache
 
     # Flush caches
     log "Flushing caches..."
@@ -157,17 +272,16 @@ restore_backup() {
 
     # Try to flush caches, but don't fail if WP-CLI has connection issues
     if wp core is-installed --allow-root &>/dev/null; then
-        wp rewrite flush --allow-root 2>/dev/null || log "Could not flush rewrite rules"
-        wp cache flush --allow-root 2>/dev/null || log "Object cache flush not available"
-        log "WordPress caches flushed"
+        wp rewrite flush --allow-root 2>/dev/null && log "✓ Rewrite rules flushed"
+        wp cache flush --allow-root 2>/dev/null && log "✓ Object cache flushed"
     else
-        log "Warning: Could not connect to WordPress for cache flushing. You may need to flush caches manually."
+        log "INFO: WP-CLI connectivity unavailable, skipping cache flush"
     fi
 
     # Clean up
     rm -rf "$temp_dir"
 
-    log "Restore completed successfully!"
+    log "✓ Restore completed successfully!"
     echo ""
     echo "Please verify your site is working correctly:"
     echo "1. Visit your production site"

@@ -19,9 +19,11 @@ PROD_URL="yoursite.com"
 BACKUP_DIR="/path/to/backups"
 MAX_BACKUPS=5
 
-# Table to preserve during deployment (e.g., analytics, custom data)
-# Set to empty string if no table should be preserved
-PRESERVE_TABLE="wp_custom_analytics"
+# Tables to preserve during deployment (space-separated list)
+# These tables will be backed up from production and restored after importing staging data
+# Examples: "wp_custom_analytics wp_form_submissions wp_dlm_downloads"
+# Set to empty string if no tables should be preserved
+PRESERVE_TABLES="wp_custom_analytics"
 
 # =============================================================================
 # OPTIONAL PRODUCTION SETTINGS

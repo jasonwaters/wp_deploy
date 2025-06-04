@@ -2,4 +2,5 @@ deploy_config.sh
 backups/
 *.sql
 *.zip
+*.tar.gz
 sites/
