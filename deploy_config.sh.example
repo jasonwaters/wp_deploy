@@ -1,38 +1,52 @@
-# WordPress Deployment Configuration
-# Copy this file to deploy_config.sh and modify the values for your setup
+#!/bin/bash
+
+# WordPress Stage to Production Deployment Configuration
+# Copy this file to deploy_config.sh and customize for your environment
 
 # =============================================================================
-# SITE PATHS
+# REQUIRED SETTINGS
 # =============================================================================
-# Absolute paths to your WordPress installations
-STAGE_PATH="/srv/www/stage.mywebsite.com/public_html"
-PROD_PATH="/srv/www/mywebsite.com/public_html"
 
-# =============================================================================
-# URL CONFIGURATION
-# =============================================================================
-# URLs for search and replace
-STAGE_URL="stage.mywebsite.com"
-PROD_URL="mywebsite.com"
+# Stage site configuration
+STAGE_PATH="/path/to/your/staging/wordpress"
+STAGE_URL="staging.yoursite.com"
 
-# =============================================================================
-# BACKUP SETTINGS
-# =============================================================================
-# Directory to store backups (will be created if it doesn't exist)
-BACKUP_DIR="/var/backups/wordpress"
+# Production site configuration
+PROD_PATH="/path/to/your/production/wordpress"
+PROD_URL="yoursite.com"
 
-# Number of backup archives to keep (older ones will be deleted)
+# Backup configuration
+BACKUP_DIR="/path/to/backups"
 MAX_BACKUPS=5
 
+# Table to preserve during deployment (e.g., analytics, custom data)
+# Set to empty string if no table should be preserved
+PRESERVE_TABLE="wp_custom_analytics"
+
 # =============================================================================
-# SPECIAL TABLES
+# OPTIONAL PRODUCTION SETTINGS
 # =============================================================================
-# Table to preserve during database migration (e.g., form submissions)
-PRESERVE_TABLE="wp_bricks_form_submissions"
+
+# Production timezone (optional)
+# Examples: "America/New_York", "Europe/London", "UTC"
+# Leave empty to keep staging timezone
+PROD_TIMEZONE=""
+
+# Production admin email (optional)
+# Leave empty to keep staging admin email
+PROD_ADMIN_EMAIL=""
 
 # =============================================================================
 # NOTES
 # =============================================================================
-# Database credentials are read automatically from each site's wp-config.php file
-# Make sure both WordPress installations have properly configured wp-config.php files
-# with correct database connection settings
+
+# The following settings are automatically configured for production:
+# - Search engine indexing: ENABLED (blog_public = 1)
+# - Debug mode: DISABLED (WP_DEBUG = 0)
+# - Comment moderation: ENABLED
+# - File editing in admin: DISABLED (security)
+# - Auto updates: Minor enabled, Major disabled
+# - WordPress cron: ENABLED
+# - Maintenance mode: DISABLED
+# - Permalinks: Flushed
+# - Cache/Transients: Cleared

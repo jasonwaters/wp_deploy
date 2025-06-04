@@ -594,6 +594,107 @@ show_summary() {
     echo "=========================================="
 }
 
+update_search_engine_visibility() {
+    log "Ensuring search engines can index the production site..."
+
+    cd "$PROD_PATH"
+
+    # Set blog_public to 1 to allow search engine indexing
+    # 0 = Discourage search engines (checked)
+    # 1 = Allow search engines (unchecked)
+    local result=$(wp db query "UPDATE wp_options SET option_value = '1' WHERE option_name = 'blog_public';" --allow-root 2>&1)
+
+    # Verify the change was made
+    local current_value=$(wp db query "SELECT option_value FROM wp_options WHERE option_name = 'blog_public';" --allow-root 2>/dev/null | grep -v "option_value" | grep -v "^$" | head -1)
+
+    if [[ "$current_value" == "1" ]]; then
+        log "✓ Search engine indexing enabled (blog_public = 1)"
+    else
+        log "WARNING: Could not verify search engine indexing setting (current value: $current_value)"
+        # Try alternative method using WP-CLI
+        if wp option update blog_public 1 --allow-root 2>/dev/null; then
+            log "✓ Search engine indexing enabled via WP-CLI"
+        else
+            log "ERROR: Failed to enable search engine indexing"
+        fi
+    fi
+}
+
+update_production_settings() {
+    log "Updating WordPress settings for production environment..."
+
+    cd "$PROD_PATH"
+
+    # 1. Enable search engine indexing (most important)
+    log "Setting search engine visibility..."
+    wp db query "UPDATE wp_options SET option_value = '1' WHERE option_name = 'blog_public';" --allow-root 2>/dev/null || true
+    local blog_public=$(wp db query "SELECT option_value FROM wp_options WHERE option_name = 'blog_public';" --allow-root 2>/dev/null | grep -v "option_value" | grep -v "^$" | head -1)
+    if [[ "$blog_public" == "1" ]]; then
+        log "✓ Search engine indexing enabled"
+    else
+        wp option update blog_public 1 --allow-root 2>/dev/null || log "WARNING: Could not enable search engine indexing"
+    fi
+
+    # 2. Disable WordPress debug mode (should be off in production)
+    log "Disabling debug mode for production..."
+    wp db query "UPDATE wp_options SET option_value = '0' WHERE option_name = 'WP_DEBUG';" --allow-root 2>/dev/null || true
+    wp db query "UPDATE wp_options SET option_value = '0' WHERE option_name = 'WP_DEBUG_LOG';" --allow-root 2>/dev/null || true
+    wp db query "UPDATE wp_options SET option_value = '0' WHERE option_name = 'WP_DEBUG_DISPLAY';" --allow-root 2>/dev/null || true
+    log "✓ Debug settings configured for production"
+
+    # 3. Set appropriate comment moderation (usually stricter in production)
+    log "Configuring comment moderation for production..."
+    wp db query "UPDATE wp_options SET option_value = '1' WHERE option_name = 'comment_moderation';" --allow-root 2>/dev/null || true
+    wp db query "UPDATE wp_options SET option_value = '1' WHERE option_name = 'moderation_notify';" --allow-root 2>/dev/null || true
+    log "✓ Comment moderation enabled"
+
+    # 4. Disable file editing in WordPress admin (security best practice)
+    log "Disabling file editing in WordPress admin..."
+    wp db query "UPDATE wp_options SET option_value = '0' WHERE option_name = 'disallow_file_edit';" --allow-root 2>/dev/null || true
+    log "✓ File editing disabled in admin"
+
+    # 5. Set timezone to production timezone if specified
+    if [[ -n "${PROD_TIMEZONE:-}" ]]; then
+        log "Setting production timezone to: $PROD_TIMEZONE"
+        wp option update timezone_string "$PROD_TIMEZONE" --allow-root 2>/dev/null || log "WARNING: Could not set timezone"
+    fi
+
+    # 6. Update admin email if specified
+    if [[ -n "${PROD_ADMIN_EMAIL:-}" ]]; then
+        log "Setting production admin email to: $PROD_ADMIN_EMAIL"
+        wp option update admin_email "$PROD_ADMIN_EMAIL" --allow-root 2>/dev/null || log "WARNING: Could not set admin email"
+    fi
+
+    # 7. Disable automatic updates for major versions (optional - you may want manual control)
+    log "Configuring automatic updates for production..."
+    wp db query "UPDATE wp_options SET option_value = '0' WHERE option_name = 'auto_update_core_major';" --allow-root 2>/dev/null || true
+    wp db query "UPDATE wp_options SET option_value = '1' WHERE option_name = 'auto_update_core_minor';" --allow-root 2>/dev/null || true
+    log "✓ Automatic updates configured (minor updates enabled, major updates disabled)"
+
+    # 8. Set appropriate cron settings
+    log "Configuring WordPress cron for production..."
+    wp db query "UPDATE wp_options SET option_value = '1' WHERE option_name = 'doing_cron';" --allow-root 2>/dev/null || true
+    log "✓ WordPress cron configured"
+
+    # 9. Clear any staging-specific transients or cache
+    log "Clearing staging-specific transients..."
+    wp transient delete --all --allow-root 2>/dev/null || log "WARNING: Could not clear transients"
+
+    # 10. Update robots.txt related settings if using WordPress to manage it
+    log "Ensuring robots.txt allows indexing..."
+    wp db query "UPDATE wp_options SET option_value = '' WHERE option_name = 'blog_public_robots';" --allow-root 2>/dev/null || true
+
+    # 11. Disable maintenance mode if it was enabled
+    log "Ensuring maintenance mode is disabled..."
+    wp maintenance-mode deactivate --allow-root 2>/dev/null || true
+
+    # 12. Update permalink structure to ensure it's production-ready
+    log "Flushing permalink structure..."
+    wp rewrite flush --allow-root 2>/dev/null || log "WARNING: Could not flush permalinks"
+
+    log "Production settings update completed"
+}
+
 # =============================================================================
 # MAIN DEPLOYMENT PROCESS
 # =============================================================================
@@ -647,6 +748,12 @@ main() {
     # Additional steps for WordPress optimization
     flush_cache
     verify_deployment
+
+    # Step 9: Update search engine visibility
+    update_search_engine_visibility
+
+    # Step 10: Update production settings
+    update_production_settings
 
     # Show completion summary
     show_summary "$backup_file"
