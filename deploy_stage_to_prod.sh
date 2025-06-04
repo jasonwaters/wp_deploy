@@ -346,7 +346,7 @@ EOF
 
     # Set specific permissions for sensitive files
     log "Setting secure permissions for wp-config.php..."
-    chmod 600 "$PROD_PATH/wp-config.php" 2>/dev/null || log "WARNING: Could not set wp-config.php permissions"
+    chmod 644 "$PROD_PATH/wp-config.php" 2>/dev/null || log "WARNING: Could not set wp-config.php permissions"
 
     # Set permissions for .htaccess if it exists (Apache only)
     if [[ -f "$PROD_PATH/.htaccess" ]]; then
@@ -354,6 +354,23 @@ EOF
         log "INFO: Found .htaccess file (Apache configuration)"
     else
         log "INFO: No .htaccess file found (likely using Nginx)"
+    fi
+
+    # Set special permissions for WordPress uploads directory (needs to be writable)
+    if [[ -d "$PROD_PATH/wp-content/uploads" ]]; then
+        log "Setting uploads directory permissions..."
+        chmod 755 "$PROD_PATH/wp-content/uploads" 2>/dev/null || log "WARNING: Could not set uploads directory permissions"
+        # Some hosting environments need 775 for uploads - uncomment if needed:
+        # chmod 775 "$PROD_PATH/wp-content/uploads" 2>/dev/null || log "WARNING: Could not set uploads directory permissions"
+
+        # Ensure all subdirectories in uploads are accessible
+        find "$PROD_PATH/wp-content/uploads" -type d -exec chmod 755 {} + 2>/dev/null || true
+        log "✓ Uploads directory permissions set"
+    fi
+
+    # Ensure backup directory has proper permissions
+    if [[ -d "$BACKUP_DIR" ]]; then
+        chmod 755 "$BACKUP_DIR" 2>/dev/null || log "WARNING: Could not set backup directory permissions"
     fi
 
     log "File sync completed"
