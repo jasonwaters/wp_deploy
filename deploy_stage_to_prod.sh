@@ -6,6 +6,13 @@
 set -euo pipefail  # Exit on error, undefined vars, pipe failures
 
 # =============================================================================
+# GLOBAL VARIABLES
+# =============================================================================
+
+# Non-interactive mode flag
+FORCE_YES=false
+
+# =============================================================================
 # LOAD CONFIGURATION
 # =============================================================================
 
@@ -505,8 +512,15 @@ update_urls() {
         if wp search-replace "$STAGE_URL" "$PROD_URL" --allow-root --dry-run 2>/dev/null; then
             echo ""
             echo "The above changes will be made to replace all instances of '$STAGE_URL' with '$PROD_URL'."
-            echo "Continue with URL replacement? (y/N)"
-            read -r response
+
+            if [[ "$FORCE_YES" == true ]]; then
+                log "Non-interactive mode: Proceeding with URL replacement automatically"
+                response="y"
+            else
+                echo "Continue with URL replacement? (y/N)"
+                read -r response
+            fi
+
             if [[ "$response" =~ ^[Yy]$ ]]; then
                 if wp search-replace "$STAGE_URL" "$PROD_URL" --allow-root 2>/dev/null; then
                     # Also handle HTTPS variants
@@ -639,9 +653,15 @@ validate_url_replacement() {
         log "⚠ URL validation failed: Found $total_stage_refs total STAGE_URL references across $validation_errors table(s)"
 
         # Offer to attempt additional cleanup
-        echo ""
-        echo "Would you like to attempt automatic cleanup of the remaining STAGE_URL references? (y/N)"
-        read -r response
+        if [[ "$FORCE_YES" == true ]]; then
+            log "Non-interactive mode: Attempting automatic cleanup of remaining STAGE_URL references"
+            response="y"
+        else
+            echo ""
+            echo "Would you like to attempt automatic cleanup of the remaining STAGE_URL references? (y/N)"
+            read -r response
+        fi
+
         if [[ "$response" =~ ^[Yy]$ ]]; then
             log "Attempting additional URL cleanup..."
 
@@ -1078,17 +1098,24 @@ main() {
     echo "Production URL: $PROD_URL"
     echo "Backup Directory: $BACKUP_DIR"
     echo "Preserved Tables: $PRESERVE_TABLES"
+    if [[ "$FORCE_YES" == true ]]; then
+        echo "Mode: Non-interactive (auto-confirm all prompts)"
+    fi
     echo ""
 
     # Final confirmation
-    echo "This will REPLACE your production site with the staging site content."
-    echo "A full backup will be created before proceeding."
-    echo ""
-    echo "Are you sure you want to continue? (y/N)"
-    read -r response
-    if [[ ! "$response" =~ ^[Yy]$ ]]; then
-        log "Deployment cancelled by user"
-        exit 0
+    if [[ "$FORCE_YES" == true ]]; then
+        log "Non-interactive mode: Proceeding with deployment automatically"
+    else
+        echo "This will REPLACE your production site with the staging site content."
+        echo "A full backup will be created before proceeding."
+        echo ""
+        echo "Are you sure you want to continue? (y/N)"
+        read -r response
+        if [[ ! "$response" =~ ^[Yy]$ ]]; then
+            log "Deployment cancelled by user"
+            exit 0
+        fi
     fi
 
     # Pre-flight checks
@@ -1141,11 +1168,13 @@ show_help() {
     echo "  -h, --help        Show this help message"
     echo "  -d, --diagnose    Run WP-CLI connectivity diagnostics"
     echo "  -v, --verbose     Enable verbose logging"
+    echo "  -y, --yes         Non-interactive mode (auto-confirm all prompts)"
     echo ""
     echo "Examples:"
     echo "  $0                Run normal deployment"
-    echo "  $0 --diagnose    Diagnose WP-CLI connectivity issues"
-    echo "  $0 --help        Show this help"
+    echo "  $0 --yes          Run deployment without prompts"
+    echo "  $0 --diagnose     Diagnose WP-CLI connectivity issues"
+    echo "  $0 --help         Show this help"
     echo ""
     echo "Configuration:"
     echo "  Edit deploy_config.sh to configure paths and settings"
@@ -1217,6 +1246,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -v|--verbose)
             set -x  # Enable verbose mode
+            shift
+            ;;
+        -y|--yes)
+            FORCE_YES=true
             shift
             ;;
         *)

@@ -6,6 +6,13 @@
 set -euo pipefail
 
 # =============================================================================
+# GLOBAL VARIABLES
+# =============================================================================
+
+# Non-interactive mode flag
+FORCE_YES=false
+
+# =============================================================================
 # LOAD CONFIGURATION
 # =============================================================================
 
@@ -173,14 +180,18 @@ restore_backup() {
     fi
 
     # Confirm restore
-    echo "This will REPLACE your current production site with the backup."
-    echo "Current production path: $PROD_PATH"
-    echo "Are you sure you want to continue? (y/N)"
-    read -r response
-    if [[ ! "$response" =~ ^[Yy]$ ]]; then
-        log "Restore cancelled by user"
-        rm -rf "$temp_dir"
-        exit 0
+    if [[ "$FORCE_YES" == true ]]; then
+        log "Non-interactive mode: Proceeding with restore automatically"
+    else
+        echo "This will REPLACE your current production site with the backup."
+        echo "Current production path: $PROD_PATH"
+        echo "Are you sure you want to continue? (y/N)"
+        read -r response
+        if [[ ! "$response" =~ ^[Yy]$ ]]; then
+            log "Restore cancelled by user"
+            rm -rf "$temp_dir"
+            exit 0
+        fi
     fi
 
     # Backup current wp-config.php
@@ -314,6 +325,9 @@ restore_backup() {
 main() {
     echo "WordPress Backup Restore Script"
     echo "==============================="
+    if [[ "$FORCE_YES" == true ]]; then
+        echo "Mode: Non-interactive (auto-confirm all prompts)"
+    fi
     echo ""
 
     # Check if backup directory exists
@@ -325,14 +339,20 @@ main() {
     list_backups
 
     # Get backup selection from user
-    echo "Enter the backup number to restore (or 'q' to quit):"
-    read -r backup_choice
+    if [[ "$FORCE_YES" == true ]]; then
+        # In non-interactive mode, automatically select the most recent backup (backup #1)
+        backup_choice="1"
+        log "Non-interactive mode: Automatically selecting most recent backup (#1)"
+    else
+        echo "Enter the backup number to restore (or 'q' to quit):"
+        read -r backup_choice
 
-    if [[ "$backup_choice" == "q" || "$backup_choice" == "Q" ]]; then
-        echo "Restore cancelled."
-        # Clean up temp file
-        rm -f "${BACKUP_DIR}/.backup_list_temp"
-        exit 0
+        if [[ "$backup_choice" == "q" || "$backup_choice" == "Q" ]]; then
+            echo "Restore cancelled."
+            # Clean up temp file
+            rm -f "${BACKUP_DIR}/.backup_list_temp"
+            exit 0
+        fi
     fi
 
     # Validate selection is a number
@@ -361,9 +381,53 @@ main() {
     restore_backup "$selected_backup"
 }
 
+show_help() {
+    echo "WordPress Backup Restore Script"
+    echo "==============================="
+    echo ""
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  -h, --help        Show this help message"
+    echo "  -y, --yes         Non-interactive mode (auto-confirm all prompts)"
+    echo "                    Automatically selects the most recent backup"
+    echo ""
+    echo "Examples:"
+    echo "  $0                Run normal restore (interactive)"
+    echo "  $0 --yes          Restore most recent backup without prompts"
+    echo "  $0 --help         Show this help"
+    echo ""
+    echo "Configuration:"
+    echo "  Uses deploy_config.sh for paths and settings"
+    echo ""
+    echo "Note:"
+    echo "  In non-interactive mode, the most recent backup is automatically selected."
+    echo "  This is useful for emergency automated recovery scenarios."
+    echo ""
+}
+
 # =============================================================================
 # SCRIPT EXECUTION
 # =============================================================================
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        -y|--yes)
+            FORCE_YES=true
+            shift
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+    esac
+done
 
 # Trap to handle script interruption
 trap 'log "Restore interrupted. Check for partial restoration."; exit 1' INT TERM
