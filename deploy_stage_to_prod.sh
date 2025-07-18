@@ -244,16 +244,6 @@ clear_production_cache() {
     find wp-content -name "*.min.css.gz" -type f -delete 2>/dev/null || true
     find wp-content -name "*.min.js.gz" -type f -delete 2>/dev/null || true
 
-    # 6. Clear Bricks cache (if Bricks is being used)
-    if [[ -d "wp-content/uploads/bricks" ]]; then
-        log "Clearing Bricks cache..."
-        rm -rf wp-content/uploads/bricks/css/* 2>/dev/null || true
-        rm -rf wp-content/uploads/bricks/js/* 2>/dev/null || true
-        # Clear Bricks database cache via SQL (minimal approach)
-        wp db query "DELETE FROM wp_options WHERE option_name LIKE 'bricks_css_%' OR option_name LIKE 'bricks_js_%';" --allow-root 2>/dev/null || true
-        log "✓ Bricks cache cleared"
-    fi
-
     log "✓ Production cache cleanup completed"
 }
 
