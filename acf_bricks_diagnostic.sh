@@ -5,16 +5,19 @@
 
 set -euo pipefail
 
-# Configuration - update these paths
-PROD_PATH="${1:-/path/to/your/production/wordpress}"
-STAGE_URL="${2:-staging.yoursite.com}"
-PROD_URL="${3:-yoursite.com}"
+# Load configuration from deploy_config.sh
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_FILE="${SCRIPT_DIR}/deploy_config.sh"
 
-if [[ "$PROD_PATH" == "/path/to/your/production/wordpress" ]]; then
-    echo "Usage: $0 <production_path> <stage_url> <prod_url>"
-    echo "Example: $0 /var/www/html staging.example.com example.com"
+# Check if config file exists
+if [[ ! -f "$CONFIG_FILE" ]]; then
+    echo "ERROR: Configuration file not found: $CONFIG_FILE"
+    echo "Please make sure deploy_config.sh exists in the same directory as this script."
     exit 1
 fi
+
+# Load configuration
+source "$CONFIG_FILE"
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
